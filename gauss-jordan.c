@@ -13,6 +13,19 @@ static double now_ms(void) {
     return (double)now.QuadPart * 1000.0 / (double)freq.QuadPart;
 }
 
+static void print_matrix(const char* title, const float* mat, int n) {
+    printf("\n=== %s ===\n", title);
+    int print_n = (n > 8) ? 8 : n;
+    for (int i = 0; i < print_n; i++) {
+        for (int j = 0; j < print_n; j++) {
+            printf("%10.4f ", mat[i * n + j]);
+        }
+        if (n > print_n) printf(" ...");
+        printf("\n");
+    }
+    if (n > print_n) printf("...\n");
+}
+
 static void invert_gauss_jordan_cpu(float* A, float* Inv, int n) {
     int W = 2 * n;
     float* aug = (float*)malloc(n * W * sizeof(float));
@@ -53,7 +66,7 @@ static void invert_gauss_jordan_cpu(float* A, float* Inv, int n) {
 
 int main() {
     int n;
-    printf("Enter matrix size N (e.g., 128, 256, 512, 1024): ");
+    printf("Enter matrix size N (e.g., 8, 128, 256, 512): ");
     if (scanf("%d", &n) != 1 || n <= 0) {
         printf("Invalid size.\n");
         return 1;
@@ -62,11 +75,15 @@ int main() {
     float* Inv = (float*)malloc(n * n * sizeof(float));
     srand(42);
     for (int i = 0; i < n * n; i++) A[i] = (float)rand() / RAND_MAX;
-    printf("Calculating inverse matrix for N=%d on CPU...\n", n);
+
     double t0 = now_ms();
     invert_gauss_jordan_cpu(A, Inv, n);
     double t1 = now_ms();
-    printf("CPU time: %.2f ms\n", t1 - t0);
+    printf("time: %.2f ms\n", t1 - t0);
+
+    print_matrix("Original Matrix A", A, n);
+    print_matrix("Inverse Matrix A^-1 (CPU)", Inv, n);
+
     free(A); free(Inv);
     return 0;
 }
