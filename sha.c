@@ -25,21 +25,18 @@ static void make_candidate(uint64_t idx, char* buf, int len) {
     buf[len] = '\0';
 }
 
-static void to_hex(const unsigned char* d, int n, char* out) {
-    for (int i = 0; i < n; ++i) sprintf(out + i * 2, "%02x", d[i]);
-    out[n * 2] = '\0';
-}
-
 int main(void) {
-    unsigned char t[SHA384_DIGEST_LENGTH];
-    char hex[2 * SHA384_DIGEST_LENGTH + 1];
-    SHA384((const unsigned char*)"abc", 3, t);
-    to_hex(t, SHA384_DIGEST_LENGTH, hex);
-    printf("self-test SHA384(\"abc\") = %s\n", hex);
-    printf("expected  = ""cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed""8086072ba1e7cc2358baeca134c825a7\n\n");
-    const char* real = "abc12";
+    char word_input[128];
     unsigned char target[SHA384_DIGEST_LENGTH];
-    SHA384((const unsigned char*)real, strlen(real), target);
+    printf("Enter a word to brute-force (3 to 5 characters):\n");
+    scanf("%s", word_input);
+    int input_len = strlen(word_input);
+    if (input_len < 3 || input_len > 5) {
+        printf("Error: Word length must be between 3 and 5 characters!\n");
+        return 1;
+    }
+    SHA384((const unsigned char*)word_input, strlen(word_input), target);
+    printf("\nSearching for word: %s\n", word_input);
     printf("len,N,checked,found,time_ms,hashes_per_sec\n");
     for (int len = 3; len <= 5; ++len) {
         uint64_t N = 1;
@@ -53,16 +50,13 @@ int main(void) {
             SHA384((const unsigned char*)cand, strlen(cand), h);
             ++checked;
             if (memcmp(h, target, SHA384_DIGEST_LENGTH) == 0) {
-                strcpy(found, cand);
-                break;
+                strcpy(found, cand); break;
             }
         }
-        double t1 = now_ms();
-        double ms = t1 - t0;
-        printf("%d,%llu,%llu,%s,%.1f,%.0f\n",
-            len, (unsigned long long)N, (unsigned long long)checked,
-            found[0] ? found : "(not found)", ms,
-            checked / (ms / 1000.0));
+        double ms = now_ms() - t0;
+        printf("%d,%llu,%llu,%s,%.1f,%.0f\n", len, (unsigned long long)N, (unsigned long long)checked, found[0] ? found : "(not found)", ms, checked / (ms / 1000.0));
+        for (int i = 0; i < SHA384_DIGEST_LENGTH; i++) printf("%llu", (unsigned long long)target[i]);
+        if (found[0]) break;
     }
     return 0;
 }

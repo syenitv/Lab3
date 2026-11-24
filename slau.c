@@ -1,7 +1,7 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <string.h>
 #include <windows.h>
 
 static double now_ms(void) {
@@ -13,78 +13,74 @@ static double now_ms(void) {
     return (double)now.QuadPart * 1000.0 / (double)freq.QuadPart;
 }
 
-static unsigned long long lcg_state = 42;
-static double lcg_double(void) {
-    lcg_state = lcg_state * 6364136223846793005ULL + 1442695040888963407ULL;
-    unsigned int u = (unsigned int)(lcg_state >> 33);
-    return (double)u / (double)0x7FFFFFFF - 1.0;
-}
-
-static void generate_slau(int n, double* A, double* b, double* x_true) {
-    int i, j;
-    for (i = 0; i < n; ++i) x_true[i] = lcg_double();
-    for (i = 0; i < n; ++i) {
-        double row_sum = 0.0;
-        for (j = 0; j < n; ++j) {
-            if (i == j) { A[(size_t)i * n + j] = 0.0; continue; }
-            double v = lcg_double();
-            A[(size_t)i * n + j] = v;
-            row_sum += fabs(v);
+static void print_matrix(const char* title, const float* mat, int n) {
+    printf("\n%s\n", title);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            printf("%10.4f ", mat[i * n + j]);
         }
-        A[(size_t)i * n + i] = row_sum + 1.0 + fabs(lcg_double());
-    }
-    for (i = 0; i < n; ++i) {
-        double s = 0.0;
-        for (j = 0; j < n; ++j) s += A[(size_t)i * n + j] * x_true[j];
-        b[i] = s;
+        printf("\n");
     }
 }
 
-static int jacobi_cpu(const double* A, const double* b, double* x,
-    int n, int max_iter, double eps) {
-    double* x_new = (double*)malloc((size_t)n * sizeof(double));
-    int it_done = 0, i, j;
-    for (int it = 0; it < max_iter; ++it) {
-        for (i = 0; i < n; ++i) {
-            const double* row = A + (size_t)i * n;
-            double s = b[i];
-            for (j = 0; j < n; ++j) if (j != i) s -= row[j] * x[j];
-            x_new[i] = s / row[i];
-        }
-        double diff = 0.0;
-        for (i = 0; i < n; ++i) {
-            double d = fabs(x_new[i] - x[i]);
-            if (d > diff) diff = d;
-        }
-        memcpy(x, x_new, (size_t)n * sizeof(double));
-        it_done = it + 1;
-        if (diff < eps) break;
+static void invert_gauss_jordan_cpu(float* A, float* Inv, int n) {
+    int W = 2 * n;
+    float* aug = (float*)malloc(n * W * sizeof(float));
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) aug[i * W + j] = A[i * n + j];
+        for (int j = 0; j < n; j++) aug[i * W + (n + j)] = (i == j) ? 1.0f : 0.0f;
     }
-    free(x_new);
-    return it_done;
+    for (int k = 0; k < n; k++) {
+        float maxv = fabsf(aug[k * W + k]);
+        int piv = k;
+        for (int i = k + 1; i < n; i++) {
+            if (fabsf(aug[i * W + k]) > maxv) {
+                maxv = fabsf(aug[i * W + k]);
+                piv = i;
+            }
+        }
+        if (maxv < 1e-12f) continue;
+        if (piv != k) {
+            for (int j = 0; j < W; j++) {
+                float t = aug[k * W + j];
+                aug[k * W + j] = aug[piv * W + j];
+                aug[piv * W + j] = t;
+            }
+        }
+        float div = aug[k * W + k];
+        for (int j = 0; j < W; j++) aug[k * W + j] /= div;
+        for (int i = 0; i < n; i++) {
+            if (i == k) continue;
+            float f = aug[i * W + k];
+            for (int j = 0; j < W; j++) aug[i * W + j] -= f * aug[k * W + j];
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) Inv[i * n + j] = aug[i * W + (n + j)];
+    }
+    free(aug);
 }
 
-int main(void) {
-    int sizes[] = { 256, 512, 1024, 2048, 4096 };
-    int ns = (int)(sizeof(sizes) / sizeof(sizes[0]));
-    printf("n,iters,time_ms,max_err_vs_true\n");
-    for (int k = 0; k < ns; ++k) {
-        int n = sizes[k];
-        double* A = (double*)malloc((size_t)n * n * sizeof(double));
-        double* b = (double*)malloc((size_t)n * sizeof(double));
-        double* x_true = (double*)malloc((size_t)n * sizeof(double));
-        double* x = (double*)calloc((size_t)n, sizeof(double));
-        generate_slau(n, A, b, x_true);
-        double t0 = now_ms();
-        int iters = jacobi_cpu(A, b, x, n, 5000, 1e-10);
-        double t1 = now_ms();
-        double err = 0.0;
-        for (int i = 0; i < n; ++i) {
-            double d = fabs(x[i] - x_true[i]);
-            if (d > err) err = d;
-        }
-        printf("%d,%d,%.3f,%.3e\n", n, iters, t1 - t0, err);
-        free(A); free(b); free(x_true); free(x);
+int main() {
+    int n;
+    printf("Enter matrix size N (e.g., 8, 128, 256, 512): ");
+    if (scanf("%d", &n) != 1 || n <= 0) {
+        printf("Invalid size.\n");
+        return 1;
     }
+    float* A = (float*)malloc(n * n * sizeof(float));
+    float* Inv = (float*)malloc(n * n * sizeof(float));
+    srand(42);
+    for (int i = 0; i < n * n; i++) A[i] = (float)rand() / RAND_MAX;
+
+    double t0 = now_ms();
+    invert_gauss_jordan_cpu(A, Inv, n);
+    double t1 = now_ms();
+    printf("time: %.2f ms\n", t1 - t0);
+
+    print_matrix("Original Matrix A", A, n);
+    print_matrix("Inverse Matrix A^-1 (CPU)", Inv, n);
+
+    free(A); free(Inv);
     return 0;
 }

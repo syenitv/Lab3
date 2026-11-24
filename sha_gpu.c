@@ -79,6 +79,15 @@ const char* kernel_source =
 "} \n";
 
 int main() {
+    char word_input[128];
+    unsigned char target[48];
+    printf("Enter a 5-character word to brute-force on GPU:\n");
+    scanf("%127s", word_input);
+    if (strlen(word_input) != 5) {
+        printf("Error: GPU version is optimized ONLY for 5-character words!\n");
+        return 1;
+    }
+    SHA384((const unsigned char*)word_input, strlen(word_input), target);
     cl_int err;
     cl_platform_id platform;
     cl_device_id device;
@@ -106,9 +115,6 @@ int main() {
     const char* alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
     uint64_t N = 60466176;
     int found_idx = -1;
-    unsigned char target[48];
-    const char* real = "abc12";
-    SHA384((const unsigned char*)real, strlen(real), target);
     cl_mem d_alphabet = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 37, (void*)alphabet, &err);
     cl_mem d_target = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 48, target, &err);
     cl_mem d_found = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(int), &found_idx, &err);
@@ -117,7 +123,7 @@ int main() {
     clSetKernelArg(kernel, 2, sizeof(uint64_t), &N);
     clSetKernelArg(kernel, 3, sizeof(cl_mem), &d_alphabet);
     size_t global_work_size = N;
-    printf("GPU brute-forcing %llu combinations...\n", (unsigned long long)global_work_size);
+    printf("GPU brute-forcing %llu combinations for word '%s'...\n", (unsigned long long)global_work_size, word_input);
     LARGE_INTEGER freq, start, end;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&start);
